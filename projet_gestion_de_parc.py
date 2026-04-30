@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sqlite3
+import mysql.connector
+from mysql.connector import Error
 import os
 from datetime import datetime
 
@@ -16,22 +17,29 @@ def validate_date(date_str):
 
 
 class Database:
-    """Classe pour gérer la base de données SQLite."""
+    """Classe pour gérer la base de données MySQL."""
 
-    def __init__(self, db_filename="gestion_de_parc.db"):
-        """Initialise la connexion à la base de données."""
+    def __init__(self, host="localhost", port=3306, user="root", password="root", database="gestion_de_parc"):
+        """Initialise la connexion à la base de données MySQL."""
         self.conn = None
         self.cursor = None
-
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(base_path, db_filename)
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.database = database
 
         try:
-            self.conn = sqlite3.connect(db_path)
-            self.conn.row_factory = sqlite3.Row
-            self.cursor = self.conn.cursor()
+            self.conn = mysql.connector.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database=database
+            )
+            self.cursor = self.conn.cursor(dictionary=True)
             self._ensure_tables()
-        except sqlite3.Error as err:
+        except Error as err:
             messagebox.showerror("Erreur connexion BDD",
                                  f"Impossible de se connecter : {err}")
 
@@ -39,13 +47,13 @@ class Database:
         """Crée les tables si elles n'existent pas encore."""
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS equipement (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                numSerie TEXT,
-                dateFinGarantie TEXT,
-                etat TEXT,
-                id_salle INTEGER,
-                id_type_equipement TEXT
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                nom VARCHAR(255) NOT NULL,
+                numSerie VARCHAR(255),
+                dateFinGarantie DATE,
+                etat VARCHAR(100),
+                id_salle INT,
+                id_type_equipement VARCHAR(100)
             )
         """)
         self.conn.commit()
@@ -63,7 +71,7 @@ class Database:
         try:
             self.cursor.execute(f"SELECT * FROM {table}")
             return self.cursor.fetchall()
-        except sqlite3.Error as err:
+        except Error as err:
             messagebox.showerror("Erreur SQL", str(err))
             return []
 
@@ -79,7 +87,7 @@ class Database:
             else:
                 self.cursor.execute(query)
             self.conn.commit()
-        except sqlite3.Error as err:
+        except Error as err:
             messagebox.showerror("Erreur SQL", str(err))
 
 
@@ -181,10 +189,10 @@ class Application(tk.Tk):
             if not value.isdigit():
                 messagebox.showerror("Erreur", "L'ID de salle doit être un nombre.")
                 return
-            filter_query = f"{column} = ?"
+            filter_query = f"{column} = %s"
             filter_params = [value]
         else:
-            filter_query = f"{column} LIKE ?"
+            filter_query = f"{column} LIKE %s"
             filter_params = [f"%{value}%"]
 
         self.load_equipements(filter_query, filter_params)
@@ -202,10 +210,10 @@ class Application(tk.Tk):
             params = []
 
         try:
-            self.cursor = self.db.conn.cursor()
+            self.cursor = self.db.conn.cursor(dictionary=True)
             self.cursor.execute(query, params)
             data = self.cursor.fetchall()
-        except sqlite3.Error as err:
+        except Error as err:
             messagebox.showerror("Erreur SQL", str(err))
             return
 
@@ -298,7 +306,7 @@ class Application(tk.Tk):
 
             self.db.execute("""
                 INSERT INTO equipement (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement_val))
 
             self.load_equipements()
@@ -417,8 +425,8 @@ class Application(tk.Tk):
 
             self.db.execute("""
                 UPDATE equipement
-                SET nom = ?, numSerie = ?, dateFinGarantie = ?, etat = ?, id_salle = ?, id_type_equipement = ?
-                WHERE id = ?
+                SET nom = %s, numSerie = %s, dateFinGarantie = %s, etat = %s, id_salle = %s, id_type_equipement = %s
+                WHERE id = %s
             """, (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement, id_to_edit))
 
             self.load_equipements()
@@ -440,7 +448,7 @@ class Application(tk.Tk):
             if not id_to_delete.isdigit():
                 messagebox.showerror("Erreur", "L'ID doit être un nombre.")
                 return
-            self.db.execute("DELETE FROM equipement WHERE id = ?", (id_to_delete,))
+            self.db.execute("DELETE FROM equipement WHERE id = %s", (id_to_delete,))
             self.load_equipements()
             win.destroy()
         tk.Button(win, text="Supprimer", command=validate).grid(row=1, column=0, columnspan=2, pady=10)

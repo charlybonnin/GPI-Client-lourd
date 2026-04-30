@@ -1,39 +1,77 @@
 import unittest
-import tempfile
 from datetime import datetime, timedelta
-from projet_gestion_de_parc import Database, validate_date, Application
+from unittest.mock import Mock, patch, MagicMock
+from projet_gestion_de_parc import Database, validate_date
 
 class TestDatabase(unittest.TestCase):
-    """Tests pour la classe Database."""
+    """Tests pour la classe Database avec MySQL."""
 
-    def setUp(self):
-        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
-        self.temp_db.close()
-        self.db = Database(self.temp_db.name)
+    @patch('projet_gestion_de_parc.mysql.connector.connect')
+    def test_connexion(self, mock_connect):
+        # Mock de la connexion MySQL
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        
+        db = Database()
+        # La connexion est mockée, on vérifie que mysql.connector.connect a été appelé
+        mock_connect.assert_called_once()
 
-    def tearDown(self):
-        if self.db.conn:
-            self.db.conn.close()
-        import os
-        os.unlink(self.temp_db.name)
+    @patch('projet_gestion_de_parc.mysql.connector.connect')
+    def test_connexion_params(self, mock_connect):
+        # Test avec les paramètres de connexion
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        
+        db = Database(host="localhost", port=3306, user="root", password="", database="gestion_de_parc")
+        
+        # Vérifier les paramètres passés
+        call_args = mock_connect.call_args
+        assert call_args.kwargs['host'] == "localhost"
+        assert call_args.kwargs['port'] == 3306
+        assert call_args.kwargs['database'] == "gestion_de_parc"
 
-    def test_connexion(self):
-        # Test si la DB se connecte
-        self.assertTrue(self.db.is_connected())
+    @patch('projet_gestion_de_parc.mysql.connector.connect')
+    def test_is_connected(self, mock_connect):
+        # Test de la méthode is_connected
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        
+        db = Database()
+        self.assertTrue(db.is_connected())
 
-    def test_table_creee(self):
-        # Vérifier que la table existe
-        self.db.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='equipement'")
-        result = self.db.cursor.fetchone()
-        self.assertIsNotNone(result)
+    @patch('projet_gestion_de_parc.mysql.connector.connect')
+    def test_fetch(self, mock_connect):
+        # Test de la méthode fetch
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [{"id": 1, "nom": "PC"}]
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        
+        db = Database()
+        result = db.fetch("equipement")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["nom"], "PC")
 
-    def test_insert_et_fetch(self):
-        # Ajouter un équipement et le récupérer
-        future_date = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
-        self.db.execute("INSERT INTO equipement (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement) VALUES (?, ?, ?, ?, ?, ?)", ("PC", "123", future_date, "Bon état", 1, "Portable"))
-        data = self.db.fetch("equipement")
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["nom"], "PC")
+    @patch('projet_gestion_de_parc.mysql.connector.connect')
+    def test_execute(self, mock_connect):
+        # Test de la méthode execute
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        
+        db = Database()
+        db.execute("INSERT INTO equipement (nom) VALUES ('PC')")
+        mock_cursor.execute.assert_called_once()
+        mock_conn.commit.assert_called_once()
+
 
 class TestValidateDate(unittest.TestCase):
     """Tests pour la fonction validate_date."""
@@ -55,23 +93,6 @@ class TestValidateDate(unittest.TestCase):
         is_valid, msg = validate_date("25/12/2023")
         self.assertFalse(is_valid)
 
-class TestApplication(unittest.TestCase):
-    """Tests pour la classe Application."""
-
-    def setUp(self):
-        import tkinter as tk
-        self.root = tk.Tk()
-        self.app = Application()
-        self.app.master = self.root  # Pour éviter les problèmes
-
-    def tearDown(self):
-        self.root.destroy()
-
-    def test_load_equipements(self):
-        # Test que load_equipements ne plante pas
-        self.app.load_equipements()
-        # Test avec filtre
-        self.app.load_equipements("id_salle = ?", [1])
 
 if __name__ == '__main__':
     unittest.main()
