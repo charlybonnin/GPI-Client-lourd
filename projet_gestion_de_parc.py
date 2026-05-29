@@ -142,22 +142,21 @@ class Application(tk.Tk):
             self.tree.column(col, width=120)
         self.tree.pack(fill="both", expand=True, padx=20, pady=10)
 
-        btn_frame = tk.Frame(self)
-        btn_frame.pack(pady=10)
-        tk.Button(btn_frame, text="Ajouter", width=15,
-                  command=self.add_equipment).grid(row=0, column=0, padx=5)
-        tk.Button(btn_frame, text="Modifier", width=15,
-                  command=self.edit_equipment).grid(row=0, column=1, padx=5)
-        tk.Button(btn_frame, text="Supprimer", width=15,
-                  command=self.delete_equipment).grid(row=0, column=2, padx=5)
-        tk.Button(btn_frame, text="Interventions", width=15,
-                  command=self.show_interventions).grid(row=0, column=3, padx=5)
-        tk.Button(btn_frame, text="Rafraîchir", width=15,
-                  command=self.load_equipements).grid(row=0, column=4, padx=5)
-        tk.Button(btn_frame, text="Exporter CSV", width=15,
-                  command=self.export_csv).grid(row=0, column=5, padx=5)
-        tk.Button(btn_frame, text="Importer CSV", width=15,
-                  command=self.import_csv).grid(row=0, column=6, padx=5)
+        # Ligne 1 : gestion des équipements
+        row1 = tk.Frame(self)
+        row1.pack(pady=(10, 3))
+        tk.Label(row1, text="Équipements :", font=("Arial", 9, "bold")).pack(side="left", padx=(0, 8))
+        tk.Button(row1, text="Ajouter", width=13, command=self.add_equipment).pack(side="left", padx=4)
+        tk.Button(row1, text="Modifier", width=13, command=self.edit_equipment).pack(side="left", padx=4)
+        tk.Button(row1, text="Supprimer", width=13, command=self.delete_equipment).pack(side="left", padx=4)
+        tk.Button(row1, text="Interventions", width=13, command=self.show_interventions).pack(side="left", padx=4)
+
+        # Ligne 2 : données
+        row2 = tk.Frame(self)
+        row2.pack(pady=(3, 10))
+        tk.Label(row2, text="Données :", font=("Arial", 9, "bold")).pack(side="left", padx=(0, 8))
+        tk.Button(row2, text="Exporter CSV", width=13, command=self.export_csv).pack(side="left", padx=4)
+        tk.Button(row2, text="Importer CSV", width=13, command=self.import_csv).pack(side="left", padx=4)
 
     def search_equipements(self):
         """Recherche les équipements selon le critère et la valeur sélectionnés."""
