@@ -61,6 +61,7 @@ class Database:
                 type_action VARCHAR(100) NOT NULL,
                 description TEXT NOT NULL,
                 technicien VARCHAR(100) NOT NULL,
+                statut VARCHAR(50) NOT NULL DEFAULT 'Nouveau',
                 FOREIGN KEY (id_equipement) REFERENCES equipement(id) ON DELETE CASCADE
             )
         """)
@@ -359,12 +360,12 @@ class Application(tk.Tk):
 
         tree_int = ttk.Treeview(
             win,
-            columns=("id", "date_intervention", "type_action", "description", "technicien"),
+            columns=("id", "date_intervention", "type_action", "description", "technicien", "statut"),
             show="headings"
         )
         for col, text, w in [("id", "ID", 40), ("date_intervention", "Date", 100),
-                              ("type_action", "Type", 130), ("description", "Description", 300),
-                              ("technicien", "Technicien", 120)]:
+                              ("type_action", "Type", 120), ("description", "Description", 240),
+                              ("technicien", "Technicien", 120), ("statut", "Statut", 120)]:
             tree_int.heading(col, text=text)
             tree_int.column(col, width=w)
         tree_int.pack(fill="both", expand=True, padx=10, pady=5)
@@ -384,7 +385,8 @@ class Application(tk.Tk):
                 for item in cursor.fetchall():
                     tree_int.insert("", tk.END, values=(
                         item["id"], item["date_intervention"],
-                        item["type_action"], item["description"], item["technicien"]
+                        item["type_action"], item["description"], item["technicien"],
+                        item.get("statut", "Nouveau")
                     ))
             except Error as err:
                 messagebox.showerror("Erreur SQL", str(err))
@@ -421,11 +423,18 @@ class Application(tk.Tk):
             entry_tech = tk.Entry(form)
             entry_tech.grid(row=3, column=1, padx=10, pady=5)
 
+            tk.Label(form, text="Statut :").grid(row=4, column=0, padx=10, pady=5)
+            statut_opts = ["Nouveau", "En cours", "En attente client", "Complété", "Autre"]
+            entry_statut = ttk.Combobox(form, values=statut_opts, state='readonly', width=25)
+            entry_statut.current(0)
+            entry_statut.grid(row=4, column=1, padx=10, pady=5)
+
             def save():
                 date = entry_date.get().strip()
                 type_action = entry_type.get().strip()
                 description = entry_desc.get("1.0", tk.END).strip()
                 technicien = entry_tech.get().strip()
+                statut = entry_statut.get().strip()
                 if not date or not type_action or not description or not technicien:
                     messagebox.showerror("Erreur", "Tous les champs sont obligatoires."); return
                 try:
@@ -433,13 +442,13 @@ class Application(tk.Tk):
                 except ValueError:
                     messagebox.showerror("Erreur", "Date invalide. Format attendu : YYYY-MM-DD."); return
                 self.db.execute(
-                    "INSERT INTO intervention (id_equipement, date_intervention, type_action, description, technicien) VALUES (%s,%s,%s,%s,%s)",
-                    (id_eq, date, type_action, description, technicien)
+                    "INSERT INTO intervention (id_equipement, date_intervention, type_action, description, technicien, statut) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (id_eq, date, type_action, description, technicien, statut)
                 )
                 load_interventions()
                 form.destroy()
 
-            tk.Button(form, text="Enregistrer", command=save).grid(row=4, column=0, columnspan=2, pady=10)
+            tk.Button(form, text="Enregistrer", command=save).grid(row=5, column=0, columnspan=2, pady=10)
 
         def delete_intervention():
             selected = tree_int.selection()
