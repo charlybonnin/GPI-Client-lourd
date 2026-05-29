@@ -134,7 +134,8 @@ class Application(tk.Tk):
         self.tree = ttk.Treeview(
             self,
             columns=("id", "nom", "numSerie", "dateFinGarantie", "etat", "id_salle", "id_type_equipement"),
-            show="headings"
+            show="headings",
+            selectmode="extended"
         )
         for col, text in [("id", "ID"), ("nom", "Nom"), ("numSerie", "Numéro de série"),
                           ("dateFinGarantie", "Fin de garantie"), ("etat", "État"),
@@ -328,15 +329,20 @@ class Application(tk.Tk):
         tk.Button(win, text="Modifier", command=validate).grid(row=7, column=0, columnspan=3, pady=10)
 
     def delete_equipment(self):
-        """Supprime l'équipement sélectionné dans le tableau."""
+        """Supprime le ou les équipements sélectionnés dans le tableau."""
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("Attention", "Veuillez sélectionner un équipement à supprimer.")
+            messagebox.showwarning("Attention", "Veuillez sélectionner au moins un équipement à supprimer.")
             return
-        id_val = self.tree.item(selected[0])["values"][0]
-        nom_val = self.tree.item(selected[0])["values"][1]
-        if messagebox.askyesno("Confirmation", f"Supprimer l'équipement "{nom_val}" (ID {id_val}) ?"):
-            self.db.execute("DELETE FROM equipement WHERE id = %s", (id_val,))
+        noms = [self.tree.item(s)["values"][1] for s in selected]
+        if len(selected) == 1:
+            msg = f"Supprimer l'équipement '{noms[0]}' ?"
+        else:
+            msg = f"Supprimer ces {len(selected)} équipements ?\n" + "\n".join(f"- {n}" for n in noms)
+        if messagebox.askyesno("Confirmation", msg):
+            for s in selected:
+                id_val = self.tree.item(s)["values"][0]
+                self.db.execute("DELETE FROM equipement WHERE id = %s", (id_val,))
             self.load_equipements()
 
     def show_interventions(self):
