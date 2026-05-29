@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import mysql.connector
 from mysql.connector import Error
 import os
+import csv
 from datetime import datetime
 
 def validate_date(date_str):
@@ -31,17 +32,12 @@ class Database:
 
         try:
             self.conn = mysql.connector.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=database
+                host=host, port=port, user=user, password=password, database=database
             )
             self.cursor = self.conn.cursor(dictionary=True)
             self._ensure_tables()
         except Error as err:
-            messagebox.showerror("Erreur connexion BDD",
-                                 f"Impossible de se connecter : {err}")
+            messagebox.showerror("Erreur connexion BDD", f"Impossible de se connecter : {err}")
 
     def _ensure_tables(self):
         """Crée les tables si elles n'existent pas encore."""
@@ -78,7 +74,6 @@ class Database:
         if not self.is_connected():
             messagebox.showerror("Erreur", "Pas connecté à la base de données.")
             return []
-
         try:
             self.cursor.execute(f"SELECT * FROM {table}")
             return self.cursor.fetchall()
@@ -91,7 +86,6 @@ class Database:
         if not self.is_connected():
             messagebox.showerror("Erreur", "Pas connecté à la base de données.")
             return
-
         try:
             if params:
                 self.cursor.execute(query, params)
@@ -107,63 +101,49 @@ class Application(tk.Tk):
 
     def __init__(self):
         super().__init__()
-
         self.title("Gestion de Parc Informatique")
-        self.geometry("900x500")
+        self.geometry("900x560")
         self.db = Database()
         self.build_ui()
-        self.update_idletasks()  # Force la mise à jour des widgets avant utilisation
+        self.update_idletasks()
         self.load_equipements()
 
     def build_ui(self):
         """Construit l'interface utilisateur."""
-        title = tk.Label(self, text="Liste des Équipements",
-                         font=("Arial", 18, "bold"))
-        title.pack(pady=10)
+        tk.Label(self, text="Liste des Équipements", font=("Arial", 18, "bold")).pack(pady=10)
 
         # Barre de recherche
         search_frame = tk.Frame(self)
         search_frame.pack(pady=5)
-
         tk.Label(search_frame, text="Rechercher par :").grid(row=0, column=0, padx=5)
-        self.search_criteria = ttk.Combobox(search_frame, values=["Salle", "Type équipement", "Nom", "Numéro de série", "État"], state='readonly')
+        self.search_criteria = ttk.Combobox(
+            search_frame,
+            values=["Salle", "Type équipement", "Nom", "Numéro de série", "État"],
+            state='readonly'
+        )
         self.search_criteria.grid(row=0, column=1, padx=5)
-        self.search_criteria.current(0)  # Défaut : Salle
-
+        self.search_criteria.current(0)
         tk.Label(search_frame, text="Valeur :").grid(row=0, column=2, padx=5)
         self.search_entry = tk.Entry(search_frame)
         self.search_entry.grid(row=0, column=3, padx=5)
-
         tk.Button(search_frame, text="Rechercher", command=self.search_equipements).grid(row=0, column=4, padx=5)
         tk.Button(search_frame, text="Tout afficher", command=self.load_equipements).grid(row=0, column=5, padx=5)
 
-        # Tableau TreeView
+        # Tableau
         self.tree = ttk.Treeview(
             self,
-            columns=("id", "nom", "numSerie", "dateFinGarantie", "etat",
-                     "id_salle", "id_type_equipement"),
+            columns=("id", "nom", "numSerie", "dateFinGarantie", "etat", "id_salle", "id_type_equipement"),
             show="headings"
         )
-
-        columns_names = [
-            ("id", "ID"),
-            ("nom", "Nom"),
-            ("numSerie", "Numéro de série"),
-            ("dateFinGarantie", "Fin de garantie"),
-            ("etat", "État"),
-            ("id_salle", "Salle"),
-            ("id_type_equipement", "Type équipement")
-        ]
-
-        for col, text in columns_names:
+        for col, text in [("id", "ID"), ("nom", "Nom"), ("numSerie", "Numéro de série"),
+                          ("dateFinGarantie", "Fin de garantie"), ("etat", "État"),
+                          ("id_salle", "Salle"), ("id_type_equipement", "Type équipement")]:
             self.tree.heading(col, text=text)
             self.tree.column(col, width=120)
-
         self.tree.pack(fill="both", expand=True, padx=20, pady=10)
 
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=10)
-
         tk.Button(btn_frame, text="Ajouter", width=15,
                   command=self.add_equipment).grid(row=0, column=0, padx=5)
         tk.Button(btn_frame, text="Modifier", width=15,
@@ -174,296 +154,193 @@ class Application(tk.Tk):
                   command=self.show_interventions).grid(row=0, column=3, padx=5)
         tk.Button(btn_frame, text="Rafraîchir", width=15,
                   command=self.load_equipements).grid(row=0, column=4, padx=5)
+        tk.Button(btn_frame, text="Exporter CSV", width=15,
+                  command=self.export_csv).grid(row=0, column=5, padx=5)
+        tk.Button(btn_frame, text="Importer CSV", width=15,
+                  command=self.import_csv).grid(row=0, column=6, padx=5)
 
     def search_equipements(self):
         """Recherche les équipements selon le critère et la valeur sélectionnés."""
         criteria = self.search_criteria.get()
         value = self.search_entry.get().strip()
-
         if not value:
             messagebox.showwarning("Attention", "Veuillez entrer une valeur de recherche.")
             return
-
-        # Mapping des critères vers les noms de colonnes SQL
         criteria_map = {
-            "Salle": "id_salle",
-            "Type équipement": "id_type_equipement",
-            "Nom": "nom",
-            "Numéro de série": "numSerie",
-            "État": "etat"
+            "Salle": "id_salle", "Type équipement": "id_type_equipement",
+            "Nom": "nom", "Numéro de série": "numSerie", "État": "etat"
         }
-
         column = criteria_map.get(criteria)
         if not column:
             return
-
-        # Pour Salle, on cherche un ID numérique
         if criteria == "Salle":
             if not value.isdigit():
                 messagebox.showerror("Erreur", "L'ID de salle doit être un nombre.")
                 return
-            filter_query = f"{column} = %s"
-            filter_params = [value]
+            self.load_equipements(f"{column} = %s", [value])
         else:
-            filter_query = f"{column} LIKE %s"
-            filter_params = [f"%{value}%"]
-
-        self.load_equipements(filter_query, filter_params)
+            self.load_equipements(f"{column} LIKE %s", [f"%{value}%"])
 
     def load_equipements(self, filter_query=None, filter_params=None):
         """Charge les équipements dans le tableau, avec un filtre optionnel."""
         for row in self.tree.get_children():
             self.tree.delete(row)
-
-        if filter_query:
-            query = f"SELECT * FROM equipement WHERE {filter_query}"
-            params = filter_params or []
-        else:
-            query = "SELECT * FROM equipement"
-            params = []
-
+        query = f"SELECT * FROM equipement WHERE {filter_query}" if filter_query else "SELECT * FROM equipement"
+        params = filter_params or []
         try:
-            self.cursor = self.db.conn.cursor(dictionary=True)
-            self.cursor.execute(query, params)
-            data = self.cursor.fetchall()
+            cursor = self.db.conn.cursor(dictionary=True)
+            cursor.execute(query, params)
+            for item in cursor.fetchall():
+                self.tree.insert("", tk.END, values=(
+                    item["id"], item["nom"], item["numSerie"], item["dateFinGarantie"],
+                    item["etat"], item["id_salle"], item["id_type_equipement"]
+                ))
         except Error as err:
             messagebox.showerror("Erreur SQL", str(err))
-            return
-
-        for item in data:
-            self.tree.insert("", tk.END, values=(
-                item["id"],
-                item["nom"],
-                item["numSerie"],
-                item["dateFinGarantie"],
-                item["etat"],
-                item["id_salle"],
-                item["id_type_equipement"]
-            ))
 
     def add_equipment(self):
         """Ouvre une fenêtre pour ajouter un nouvel équipement."""
         win = tk.Toplevel(self)
         win.title("Ajouter un équipement")
-        tk.Label(win, text="Nom :").grid(row=0, column=0, padx=10, pady=5)
-        entry_nom = tk.Entry(win)
-        entry_nom.grid(row=0, column=1, padx=10, pady=5)
-        tk.Label(win, text="Numéro de série :").grid(row=1, column=0, padx=10, pady=5)
-        entry_numSerie = tk.Entry(win)
-        entry_numSerie.grid(row=1, column=1, padx=10, pady=5)
-        tk.Label(win, text="Fin de garantie :").grid(row=2, column=0, padx=10, pady=5)
-        entry_dateFinGarantie = tk.Entry(win)
-        entry_dateFinGarantie.grid(row=2, column=1, padx=10, pady=5)
-        tk.Label(win, text="État :").grid(row=3, column=0, padx=10, pady=5)
         etat_options = ["Parfait état", "Bon état", "État médiocre", "Mauvais état"]
-        entry_etat = ttk.Combobox(win, values=etat_options, state='readonly')
-        entry_etat.grid(row=3, column=1, padx=10, pady=5)
-        entry_etat.current(0)
-
-        tk.Label(win, text="ID Salle :").grid(row=4, column=0, padx=10, pady=5)
-        entry_id_salle = tk.Entry(win)
-        entry_id_salle.grid(row=4, column=1, padx=10, pady=5)
-
-        tk.Label(win, text="ID Type Équipement :").grid(row=5, column=0, padx=10, pady=5)
         type_options = ["Portable", "Poste de travail", "Imprimante", "NAS", "Serveur"]
-        entry_id_type_equipement = ttk.Combobox(win, values=type_options, state='readonly')
-        entry_id_type_equipement.grid(row=5, column=1, padx=10, pady=5)
-        entry_id_type_equipement.current(0)
 
-        type_map = {
-            "Portable": "Portable",
-            "Poste de travail": "Poste de travail",
-            "Imprimante": "Imprimante",
-            "NAS": "NAS",
-            "Serveur": "Serveur"
-        }
+        fields = {}
+        for i, (label, key) in enumerate([("Nom :", "nom"), ("Numéro de série :", "numSerie"),
+                                           ("Fin de garantie (YYYY-MM-DD) :", "dateFinGarantie"),
+                                           ("ID Salle :", "id_salle")]):
+            tk.Label(win, text=label).grid(row=i, column=0, padx=10, pady=5)
+            e = tk.Entry(win)
+            e.grid(row=i, column=1, padx=10, pady=5)
+            fields[key] = e
+
+        tk.Label(win, text="État :").grid(row=4, column=0, padx=10, pady=5)
+        entry_etat = ttk.Combobox(win, values=etat_options, state='readonly')
+        entry_etat.current(0)
+        entry_etat.grid(row=4, column=1, padx=10, pady=5)
+
+        tk.Label(win, text="Type équipement :").grid(row=5, column=0, padx=10, pady=5)
+        entry_type = ttk.Combobox(win, values=type_options, state='readonly')
+        entry_type.current(0)
+        entry_type.grid(row=5, column=1, padx=10, pady=5)
 
         def validate():
-            nom = entry_nom.get().strip()
-            numSerie = entry_numSerie.get().strip()
-            dateFinGarantie = entry_dateFinGarantie.get().strip()
+            nom = fields["nom"].get().strip()
+            numSerie = fields["numSerie"].get().strip()
+            dateFinGarantie = fields["dateFinGarantie"].get().strip()
+            id_salle = fields["id_salle"].get().strip()
             etat = entry_etat.get().strip()
-            id_salle = entry_id_salle.get().strip()
-            id_type_equipement = entry_id_type_equipement.get().strip()
-
+            id_type = entry_type.get().strip()
             if not nom:
-                messagebox.showerror("Erreur", "Le nom est obligatoire.")
-                return
-            
+                messagebox.showerror("Erreur", "Le nom est obligatoire."); return
             if not numSerie:
-                messagebox.showerror("Erreur", "Le numéro de série est obligatoire.")
-                return
-            
+                messagebox.showerror("Erreur", "Le numéro de série est obligatoire."); return
             if not dateFinGarantie:
-                messagebox.showerror("Erreur", "La date de fin de garantie est obligatoire.")
-                return
-
-            is_valid, error_msg = validate_date(dateFinGarantie)
-            if not is_valid:
-                messagebox.showerror("Erreur", error_msg)
-                return
-
-            if etat not in etat_options:
-                messagebox.showerror("Erreur", "Choisir un état valide.")
-                return
-            
+                messagebox.showerror("Erreur", "La date de fin de garantie est obligatoire."); return
+            ok, msg = validate_date(dateFinGarantie)
+            if not ok:
+                messagebox.showerror("Erreur", msg); return
             if not id_salle:
-                messagebox.showerror("Erreur", "L'ID de salle est obligatoire.")
-                return
-
-            if id_type_equipement not in type_map:
-                messagebox.showerror("Erreur", "Choisir un type d'équipement valide.")
-                return
-
-            id_type_equipement_val = type_map[id_type_equipement]
-
-            self.db.execute("""
-                INSERT INTO equipement (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement_val))
-
+                messagebox.showerror("Erreur", "L'ID de salle est obligatoire."); return
+            self.db.execute(
+                "INSERT INTO equipement (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement) VALUES (%s,%s,%s,%s,%s,%s)",
+                (nom, numSerie, dateFinGarantie, etat, id_salle, id_type)
+            )
             self.load_equipements()
             win.destroy()
+
         tk.Button(win, text="Ajouter", command=validate).grid(row=6, column=0, columnspan=2, pady=10)
 
     def edit_equipment(self):
         """Ouvre une fenêtre pour modifier un équipement existant."""
         win = tk.Toplevel(self)
         win.title("Modifier un équipement")
+        etat_options = ["Parfait état", "Bon état", "État médiocre", "Mauvais état"]
+        type_options = ["Portable", "Poste de travail", "Imprimante", "NAS", "Serveur"]
 
-        # Champ ID
         tk.Label(win, text="ID de l'équipement :").grid(row=0, column=0, padx=10, pady=5)
         entry_id = tk.Entry(win)
         entry_id.grid(row=0, column=1, padx=10, pady=5)
 
-        # Champs pour modification
-        tk.Label(win, text="Nom :").grid(row=1, column=0, padx=10, pady=5)
-        entry_nom = tk.Entry(win)
-        entry_nom.grid(row=1, column=1, padx=10, pady=5)
+        entries = {}
+        for i, (label, key) in enumerate([("Nom :", "nom"), ("Numéro de série :", "numSerie"),
+                                           ("Fin de garantie :", "dateFinGarantie"), ("ID Salle :", "id_salle")], start=1):
+            tk.Label(win, text=label).grid(row=i, column=0, padx=10, pady=5)
+            e = tk.Entry(win)
+            e.grid(row=i, column=1, padx=10, pady=5)
+            entries[key] = e
 
-        tk.Label(win, text="Numéro de série :").grid(row=2, column=0, padx=10, pady=5)
-        entry_numSerie = tk.Entry(win)
-        entry_numSerie.grid(row=2, column=1, padx=10, pady=5)
-
-        tk.Label(win, text="Fin de garantie :").grid(row=3, column=0, padx=10, pady=5)
-        entry_dateFinGarantie = tk.Entry(win)
-        entry_dateFinGarantie.grid(row=3, column=1, padx=10, pady=5)
-
-        tk.Label(win, text="État :").grid(row=4, column=0, padx=10, pady=5)
-        etat_options = ["Parfait état", "Bon état", "État médiocre", "Mauvais état"]
+        tk.Label(win, text="État :").grid(row=5, column=0, padx=10, pady=5)
         entry_etat = ttk.Combobox(win, values=etat_options, state='readonly')
-        entry_etat.grid(row=4, column=1, padx=10, pady=5)
+        entry_etat.grid(row=5, column=1, padx=10, pady=5)
 
-        tk.Label(win, text="ID Salle :").grid(row=5, column=0, padx=10, pady=5)
-        entry_id_salle = tk.Entry(win)
-        entry_id_salle.grid(row=5, column=1, padx=10, pady=5)
-
-        tk.Label(win, text="Type Équipement :").grid(row=6, column=0, padx=10, pady=5)
-        type_options = ["Portable", "Poste de travail", "Imprimante", "NAS", "Serveur"]
-        entry_id_type_equipement = ttk.Combobox(win, values=type_options, state='readonly')
-        entry_id_type_equipement.grid(row=6, column=1, padx=10, pady=5)
+        tk.Label(win, text="Type équipement :").grid(row=6, column=0, padx=10, pady=5)
+        entry_type = ttk.Combobox(win, values=type_options, state='readonly')
+        entry_type.grid(row=6, column=1, padx=10, pady=5)
 
         def load_data():
-            id_to_load = entry_id.get().strip()
-            if not id_to_load.isdigit():
-                messagebox.showerror("Erreur", "L'ID doit être un nombre.")
-                return
+            id_val = entry_id.get().strip()
+            if not id_val.isdigit():
+                messagebox.showerror("Erreur", "L'ID doit être un nombre."); return
             data = self.db.fetch("equipement")
-            item = None
-            for row in data:
-                if str(row["id"]) == id_to_load:
-                    item = row
-                    break
+            item = next((r for r in data if str(r["id"]) == id_val), None)
             if not item:
-                messagebox.showerror("Erreur", "Équipement non trouvé.")
-                return
-            entry_nom.delete(0, tk.END)
-            entry_nom.insert(0, item["nom"])
-            entry_numSerie.delete(0, tk.END)
-            entry_numSerie.insert(0, item["numSerie"])
-            entry_dateFinGarantie.delete(0, tk.END)
-            entry_dateFinGarantie.insert(0, item["dateFinGarantie"])
+                messagebox.showerror("Erreur", "Équipement non trouvé."); return
+            entries["nom"].delete(0, tk.END); entries["nom"].insert(0, item["nom"])
+            entries["numSerie"].delete(0, tk.END); entries["numSerie"].insert(0, item["numSerie"])
+            entries["dateFinGarantie"].delete(0, tk.END); entries["dateFinGarantie"].insert(0, item["dateFinGarantie"])
+            entries["id_salle"].delete(0, tk.END); entries["id_salle"].insert(0, item["id_salle"])
             entry_etat.set(item["etat"])
-            entry_id_salle.delete(0, tk.END)
-            entry_id_salle.insert(0, item["id_salle"])
-            entry_id_type_equipement.set(item["id_type_equipement"])
+            entry_type.set(item["id_type_equipement"])
 
         tk.Button(win, text="Charger", command=load_data).grid(row=0, column=2, padx=5)
 
         def validate():
-            id_to_edit = entry_id.get().strip()
-            if not id_to_edit.isdigit():
-                messagebox.showerror("Erreur", "L'ID doit être un nombre.")
-                return
-
-            nom = entry_nom.get().strip()
-            numSerie = entry_numSerie.get().strip()
-            dateFinGarantie = entry_dateFinGarantie.get().strip()
+            id_val = entry_id.get().strip()
+            if not id_val.isdigit():
+                messagebox.showerror("Erreur", "L'ID doit être un nombre."); return
+            nom = entries["nom"].get().strip()
+            numSerie = entries["numSerie"].get().strip()
+            dateFinGarantie = entries["dateFinGarantie"].get().strip()
+            id_salle = entries["id_salle"].get().strip()
             etat = entry_etat.get().strip()
-            id_salle = entry_id_salle.get().strip()
-            id_type_equipement = entry_id_type_equipement.get().strip()
-
+            id_type = entry_type.get().strip()
             if not nom:
-                messagebox.showerror("Erreur", "Le nom est obligatoire.")
-                return
-            
+                messagebox.showerror("Erreur", "Le nom est obligatoire."); return
             if not numSerie:
-                messagebox.showerror("Erreur", "Le numéro de série est obligatoire.")
-                return
-            
+                messagebox.showerror("Erreur", "Le numéro de série est obligatoire."); return
             if not dateFinGarantie:
-                messagebox.showerror("Erreur", "La date de fin de garantie est obligatoire.")
-                return
-
-            is_valid, error_msg = validate_date(dateFinGarantie)
-            if not is_valid:
-                messagebox.showerror("Erreur", error_msg)
-                return
-
-            if etat not in etat_options:
-                messagebox.showerror("Erreur", "Choisir un état valide.")
-                return
-            
-            if not id_salle:
-                messagebox.showerror("Erreur", "L'ID de salle est obligatoire.")
-                return
-            
-            if not id_salle.isdigit():
-                messagebox.showerror("Erreur", "L'ID de salle doit être un nombre.")
-                return
-
-            if id_type_equipement not in type_options:
-                messagebox.showerror("Erreur", "Choisir un type d'équipement valide.")
-                return
-
-            self.db.execute("""
-                UPDATE equipement
-                SET nom = %s, numSerie = %s, dateFinGarantie = %s, etat = %s, id_salle = %s, id_type_equipement = %s
-                WHERE id = %s
-            """, (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement, id_to_edit))
-
+                messagebox.showerror("Erreur", "La date de fin de garantie est obligatoire."); return
+            ok, msg = validate_date(dateFinGarantie)
+            if not ok:
+                messagebox.showerror("Erreur", msg); return
+            if not id_salle or not id_salle.isdigit():
+                messagebox.showerror("Erreur", "L'ID de salle doit être un nombre."); return
+            self.db.execute(
+                "UPDATE equipement SET nom=%s, numSerie=%s, dateFinGarantie=%s, etat=%s, id_salle=%s, id_type_equipement=%s WHERE id=%s",
+                (nom, numSerie, dateFinGarantie, etat, id_salle, id_type, id_val)
+            )
             self.load_equipements()
             win.destroy()
 
         tk.Button(win, text="Modifier", command=validate).grid(row=7, column=0, columnspan=3, pady=10)
 
-
-
     def delete_equipment(self):
         """Ouvre une fenêtre pour supprimer un équipement."""
-        win= tk.Toplevel(self)
+        win = tk.Toplevel(self)
         win.title("Supprimer un équipement")
         tk.Label(win, text="ID de l'équipement à supprimer :").grid(row=0, column=0, padx=10, pady=5)
         entry_id = tk.Entry(win)
         entry_id.grid(row=0, column=1, padx=10, pady=5)
+
         def validate():
-            id_to_delete = entry_id.get().strip()
-            if not id_to_delete.isdigit():
-                messagebox.showerror("Erreur", "L'ID doit être un nombre.")
-                return
-            self.db.execute("DELETE FROM equipement WHERE id = %s", (id_to_delete,))
+            id_val = entry_id.get().strip()
+            if not id_val.isdigit():
+                messagebox.showerror("Erreur", "L'ID doit être un nombre."); return
+            self.db.execute("DELETE FROM equipement WHERE id = %s", (id_val,))
             self.load_equipements()
             win.destroy()
+
         tk.Button(win, text="Supprimer", command=validate).grid(row=1, column=0, columnspan=2, pady=10)
 
     def show_interventions(self):
@@ -472,32 +349,28 @@ class Application(tk.Tk):
         win.title("Historique des interventions")
         win.geometry("800x500")
 
-        # Sélection de l'équipement
         top_frame = tk.Frame(win)
         top_frame.pack(pady=10)
         tk.Label(top_frame, text="ID équipement :").grid(row=0, column=0, padx=5)
         entry_id_eq = tk.Entry(top_frame, width=10)
         entry_id_eq.grid(row=0, column=1, padx=5)
 
-        # Tableau des interventions
-        columns = ("id", "date_intervention", "type_action", "description", "technicien")
-        tree_int = ttk.Treeview(win, columns=columns, show="headings")
-        for col, text in [("id", "ID"), ("date_intervention", "Date"), ("type_action", "Type"),
-                          ("description", "Description"), ("technicien", "Technicien")]:
+        tree_int = ttk.Treeview(
+            win,
+            columns=("id", "date_intervention", "type_action", "description", "technicien"),
+            show="headings"
+        )
+        for col, text, w in [("id", "ID", 40), ("date_intervention", "Date", 100),
+                              ("type_action", "Type", 130), ("description", "Description", 300),
+                              ("technicien", "Technicien", 120)]:
             tree_int.heading(col, text=text)
-        tree_int.column("id", width=40)
-        tree_int.column("date_intervention", width=100)
-        tree_int.column("type_action", width=130)
-        tree_int.column("description", width=300)
-        tree_int.column("technicien", width=120)
+            tree_int.column(col, width=w)
         tree_int.pack(fill="both", expand=True, padx=10, pady=5)
 
         def load_interventions():
-            """Charge les interventions de l'équipement sélectionné."""
             id_eq = entry_id_eq.get().strip()
             if not id_eq.isdigit():
-                messagebox.showerror("Erreur", "L'ID doit être un nombre.")
-                return
+                messagebox.showerror("Erreur", "L'ID doit être un nombre."); return
             for row in tree_int.get_children():
                 tree_int.delete(row)
             try:
@@ -516,16 +389,13 @@ class Application(tk.Tk):
 
         tk.Button(top_frame, text="Charger", command=load_interventions).grid(row=0, column=2, padx=5)
 
-        # Boutons d'action
         btn_frame = tk.Frame(win)
         btn_frame.pack(pady=5)
 
         def add_intervention():
-            """Ouvre un formulaire pour ajouter une intervention."""
             id_eq = entry_id_eq.get().strip()
             if not id_eq.isdigit():
-                messagebox.showerror("Erreur", "Veuillez charger un équipement d'abord.")
-                return
+                messagebox.showerror("Erreur", "Veuillez charger un équipement d'abord."); return
             form = tk.Toplevel(win)
             form.title("Ajouter une intervention")
 
@@ -535,9 +405,9 @@ class Application(tk.Tk):
             entry_date.grid(row=0, column=1, padx=10, pady=5)
 
             tk.Label(form, text="Type d'action :").grid(row=1, column=0, padx=10, pady=5)
-            type_options = ["Maintenance préventive", "Réparation", "Mise à jour logicielle",
-                            "Changement de composant", "Installation", "Autre"]
-            entry_type = ttk.Combobox(form, values=type_options, state='readonly', width=25)
+            type_opts = ["Maintenance préventive", "Réparation", "Mise à jour logicielle",
+                         "Changement de composant", "Installation", "Autre"]
+            entry_type = ttk.Combobox(form, values=type_opts, state='readonly', width=25)
             entry_type.current(0)
             entry_type.grid(row=1, column=1, padx=10, pady=5)
 
@@ -554,31 +424,25 @@ class Application(tk.Tk):
                 type_action = entry_type.get().strip()
                 description = entry_desc.get("1.0", tk.END).strip()
                 technicien = entry_tech.get().strip()
-
                 if not date or not type_action or not description or not technicien:
-                    messagebox.showerror("Erreur", "Tous les champs sont obligatoires.")
-                    return
+                    messagebox.showerror("Erreur", "Tous les champs sont obligatoires."); return
                 try:
                     datetime.strptime(date, "%Y-%m-%d")
                 except ValueError:
-                    messagebox.showerror("Erreur", "Date invalide. Format attendu : YYYY-MM-DD.")
-                    return
-
-                self.db.execute("""
-                    INSERT INTO intervention (id_equipement, date_intervention, type_action, description, technicien)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (id_eq, date, type_action, description, technicien))
+                    messagebox.showerror("Erreur", "Date invalide. Format attendu : YYYY-MM-DD."); return
+                self.db.execute(
+                    "INSERT INTO intervention (id_equipement, date_intervention, type_action, description, technicien) VALUES (%s,%s,%s,%s,%s)",
+                    (id_eq, date, type_action, description, technicien)
+                )
                 load_interventions()
                 form.destroy()
 
             tk.Button(form, text="Enregistrer", command=save).grid(row=4, column=0, columnspan=2, pady=10)
 
         def delete_intervention():
-            """Supprime l'intervention sélectionnée dans le tableau."""
             selected = tree_int.selection()
             if not selected:
-                messagebox.showwarning("Attention", "Sélectionnez une intervention à supprimer.")
-                return
+                messagebox.showwarning("Attention", "Sélectionnez une intervention à supprimer."); return
             id_int = tree_int.item(selected[0])["values"][0]
             if messagebox.askyesno("Confirmation", f"Supprimer l'intervention #{id_int} ?"):
                 self.db.execute("DELETE FROM intervention WHERE id = %s", (id_int,))
@@ -588,6 +452,75 @@ class Application(tk.Tk):
                   command=add_intervention).grid(row=0, column=0, padx=5)
         tk.Button(btn_frame, text="Supprimer l'intervention", width=22,
                   command=delete_intervention).grid(row=0, column=1, padx=5)
+
+    def export_csv(self):
+        """Exporte tous les équipements dans un fichier CSV choisi par l'utilisateur."""
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("Fichiers CSV", "*.csv")],
+            title="Exporter les équipements"
+        )
+        if not filepath:
+            return
+        try:
+            cursor = self.db.conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM equipement")
+            rows = cursor.fetchall()
+            if not rows:
+                messagebox.showinfo("Export", "Aucun équipement à exporter."); return
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+                writer.writeheader()
+                writer.writerows(rows)
+            messagebox.showinfo("Export réussi", f"{len(rows)} équipement(s) exporté(s) vers :\n{filepath}")
+        except Exception as err:
+            messagebox.showerror("Erreur export", str(err))
+
+    def import_csv(self):
+        """Importe des équipements depuis un fichier CSV."""
+        filepath = filedialog.askopenfilename(
+            filetypes=[("Fichiers CSV", "*.csv")],
+            title="Importer des équipements"
+        )
+        if not filepath:
+            return
+        colonnes_attendues = {"nom", "numSerie", "dateFinGarantie", "etat", "id_salle", "id_type_equipement"}
+        inseres = 0
+        erreurs = 0
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                if not colonnes_attendues.issubset(set(reader.fieldnames or [])):
+                    messagebox.showerror(
+                        "Erreur import",
+                        "Colonnes manquantes dans le CSV.\nColonnes attendues : " + ", ".join(colonnes_attendues)
+                    )
+                    return
+                for row in reader:
+                    nom = row.get("nom", "").strip()
+                    num_serie = row.get("numSerie", "").strip()
+                    date_fin = row.get("dateFinGarantie", "").strip()
+                    etat = row.get("etat", "").strip()
+                    id_salle = row.get("id_salle", "").strip()
+                    id_type = row.get("id_type_equipement", "").strip()
+                    if not nom or not num_serie:
+                        erreurs += 1
+                        continue
+                    try:
+                        self.db.execute(
+                            "INSERT INTO equipement (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement) VALUES (%s,%s,%s,%s,%s,%s)",
+                            (nom, num_serie, date_fin or None, etat, id_salle or None, id_type)
+                        )
+                        inseres += 1
+                    except Exception:
+                        erreurs += 1
+            self.load_equipements()
+            messagebox.showinfo(
+                "Import terminé",
+                f"{inseres} équipement(s) importé(s).\n{erreurs} ligne(s) ignorée(s)."
+            )
+        except Exception as err:
+            messagebox.showerror("Erreur import", str(err))
 
 
 if __name__ == "__main__":

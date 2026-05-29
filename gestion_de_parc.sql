@@ -99,6 +99,24 @@ CREATE TABLE `type_equipement` (
 -- --------------------------------------------------------
 
 --
+-- Structure de la table `ticket`
+--
+
+CREATE TABLE `ticket` (
+  `id` int(11) NOT NULL,
+  `titre` varchar(255) NOT NULL,
+  `description` text NOT NULL,
+  `date_creation` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `statut` varchar(50) NOT NULL DEFAULT 'Ouvert',
+  `priorite` varchar(50) NOT NULL DEFAULT 'Normale',
+  `id_equipement` int(11) DEFAULT NULL,
+  `technicien` varchar(100) DEFAULT NULL,
+  `date_resolution` date DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
 -- Structure de la table `intervention`
 --
 
@@ -150,6 +168,13 @@ ALTER TABLE `salle`
 --
 ALTER TABLE `type_equipement`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Index pour la table `ticket`
+--
+ALTER TABLE `ticket`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `id_equipement` (`id_equipement`);
 
 --
 -- Index pour la table `intervention`
@@ -205,10 +230,22 @@ ALTER TABLE `intervention`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT pour la table `ticket`
+--
+ALTER TABLE `ticket`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Contrainte de clé étrangère pour la table `intervention`
 --
 ALTER TABLE `intervention`
   ADD CONSTRAINT `fk_intervention_equipement` FOREIGN KEY (`id_equipement`) REFERENCES `equipement` (`id`) ON DELETE CASCADE;
+
+--
+-- Contrainte de clé étrangère pour la table `ticket`
+--
+ALTER TABLE `ticket`
+  ADD CONSTRAINT `fk_ticket_equipement` FOREIGN KEY (`id_equipement`) REFERENCES `equipement` (`id`) ON DELETE SET NULL;
 
 COMMIT;
 
