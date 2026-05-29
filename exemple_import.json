@@ -1,0 +1,57 @@
+[
+  {
+    "nom": "Dell OptiPlex 7080",
+    "numSerie": "SN-DELL-001",
+    "dateFinGarantie": "2027-06-15",
+    "etat": "Bon état",
+    "id_salle": 1,
+    "id_type_equipement": "Poste de travail",
+    "historique": [
+      {"date_intervention": "2025-01-10", "type_action": "Maintenance préventive", "description": "Nettoyage interne et vérification des ventilateurs", "technicien": "Martin Dupont"},
+      {"date_intervention": "2024-06-05", "type_action": "Mise à jour logicielle", "description": "Mise à jour Windows 11 et pilotes", "technicien": "Martin Dupont"}
+    ]
+  },
+  {
+    "nom": "HP LaserJet Pro",
+    "numSerie": "SN-HP-002",
+    "dateFinGarantie": "2026-12-01",
+    "etat": "Parfait état",
+    "id_salle": 2,
+    "id_type_equipement": "Imprimante",
+    "historique": [
+      {"date_intervention": "2025-03-18", "type_action": "Changement de composant", "description": "Remplacement du tambour d'impression", "technicien": "Sophie Bernard"}
+    ]
+  },
+  {
+    "nom": "Lenovo ThinkPad X1",
+    "numSerie": "SN-LEN-003",
+    "dateFinGarantie": "2028-03-20",
+    "etat": "Parfait état",
+    "id_salle": 1,
+    "id_type_equipement": "Portable",
+    "historique": []
+  },
+  {
+    "nom": "Synology DS923+",
+    "numSerie": "SN-SYN-004",
+    "dateFinGarantie": "2029-01-10",
+    "etat": "Bon état",
+    "id_salle": 3,
+    "id_type_equipement": "NAS",
+    "historique": [
+      {"date_intervention": "2025-02-14", "type_action": "Maintenance préventive", "description": "Vérification RAID et remplacement d'un disque défaillant", "technicien": "Lucas Moreau"}
+    ]
+  },
+  {
+    "nom": "Dell PowerEdge R740",
+    "numSerie": "SN-SRV-005",
+    "dateFinGarantie": "2030-05-30",
+    "etat": "Parfait état",
+    "id_salle": 3,
+    "id_type_equipement": "Serveur",
+    "historique": [
+      {"date_intervention": "2025-04-01", "type_action": "Mise à jour logicielle", "description": "Mise à jour firmware iDRAC et BIOS", "technicien": "Lucas Moreau"},
+      {"date_intervention": "2024-11-20", "type_action": "Installation", "description": "Installation initiale et configuration réseau", "technicien": "Martin Dupont"}
+    ]
+  }
+]

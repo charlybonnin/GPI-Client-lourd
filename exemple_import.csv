@@ -1,0 +1,8 @@
+nom,numSerie,dateFinGarantie,etat,id_salle,id_type_equipement
+Dell OptiPlex 7080,SN-DELL-001,2027-06-15,Bon état,1,Poste de travail
+HP LaserJet Pro,SN-HP-002,2026-12-01,Parfait état,2,Imprimante
+Lenovo ThinkPad X1,SN-LEN-003,2028-03-20,Parfait état,1,Portable
+Synology DS923+,SN-SYN-004,2029-01-10,Bon état,3,NAS
+Dell PowerEdge R740,SN-SRV-005,2030-05-30,Parfait état,3,Serveur
+HP EliteBook 840,SN-HP-006,2027-09-14,Bon état,2,Portable
+Canon PIXMA TR8620,SN-CAN-007,2026-08-22,État médiocre,1,Imprimante

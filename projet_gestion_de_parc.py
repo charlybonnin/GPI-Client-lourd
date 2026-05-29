@@ -4,6 +4,7 @@ import mysql.connector
 from mysql.connector import Error
 import os
 import csv
+import json
 from datetime import datetime
 
 def validate_date(date_str):
@@ -157,6 +158,8 @@ class Application(tk.Tk):
         tk.Label(row2, text="Données :", font=("Arial", 9, "bold")).pack(side="left", padx=(0, 8))
         tk.Button(row2, text="Exporter CSV", width=13, command=self.export_csv).pack(side="left", padx=4)
         tk.Button(row2, text="Importer CSV", width=13, command=self.import_csv).pack(side="left", padx=4)
+        tk.Button(row2, text="Exporter JSON", width=13, command=self.export_json).pack(side="left", padx=4)
+        tk.Button(row2, text="Importer JSON", width=13, command=self.import_json).pack(side="left", padx=4)
 
     def search_equipements(self):
         """Recherche les équipements selon le critère et la valeur sélectionnés."""
@@ -325,22 +328,16 @@ class Application(tk.Tk):
         tk.Button(win, text="Modifier", command=validate).grid(row=7, column=0, columnspan=3, pady=10)
 
     def delete_equipment(self):
-        """Ouvre une fenêtre pour supprimer un équipement."""
-        win = tk.Toplevel(self)
-        win.title("Supprimer un équipement")
-        tk.Label(win, text="ID de l'équipement à supprimer :").grid(row=0, column=0, padx=10, pady=5)
-        entry_id = tk.Entry(win)
-        entry_id.grid(row=0, column=1, padx=10, pady=5)
-
-        def validate():
-            id_val = entry_id.get().strip()
-            if not id_val.isdigit():
-                messagebox.showerror("Erreur", "L'ID doit être un nombre."); return
+        """Supprime l'équipement sélectionné dans le tableau."""
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Attention", "Veuillez sélectionner un équipement à supprimer.")
+            return
+        id_val = self.tree.item(selected[0])["values"][0]
+        nom_val = self.tree.item(selected[0])["values"][1]
+        if messagebox.askyesno("Confirmation", f"Supprimer l'équipement "{nom_val}" (ID {id_val}) ?"):
             self.db.execute("DELETE FROM equipement WHERE id = %s", (id_val,))
             self.load_equipements()
-            win.destroy()
-
-        tk.Button(win, text="Supprimer", command=validate).grid(row=1, column=0, columnspan=2, pady=10)
 
     def show_interventions(self):
         """Ouvre la fenêtre de gestion des interventions pour un équipement."""
@@ -521,6 +518,86 @@ class Application(tk.Tk):
         except Exception as err:
             messagebox.showerror("Erreur import", str(err))
 
+
+    def export_json(self):
+        """Exporte tous les équipements dans un fichier JSON choisi par l'utilisateur."""
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Fichiers JSON", "*.json")],
+            title="Exporter les équipements en JSON"
+        )
+        if not filepath:
+            return
+        try:
+            cursor = self.db.conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM equipement")
+            equipements = cursor.fetchall()
+            if not equipements:
+                messagebox.showinfo("Export", "Aucun équipement à exporter.")
+                return
+            # Convertir les dates en string pour la sérialisation JSON
+            for eq in equipements:
+                for key, val in eq.items():
+                    if hasattr(val, 'isoformat'):
+                        eq[key] = val.isoformat()
+                # Récupérer l'historique des interventions
+                cursor.execute(
+                    "SELECT date_intervention, type_action, description, technicien FROM intervention WHERE id_equipement = %s ORDER BY date_intervention DESC",
+                    (eq["id"],)
+                )
+                interventions = cursor.fetchall()
+                for interv in interventions:
+                    for k, v in interv.items():
+                        if hasattr(v, 'isoformat'):
+                            interv[k] = v.isoformat()
+                eq["historique"] = interventions
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(equipements, f, ensure_ascii=False, indent=2)
+            messagebox.showinfo("Export réussi", f"{len(equipements)} équipement(s) exporté(s) vers :\n{filepath}")
+        except Exception as err:
+            messagebox.showerror("Erreur export JSON", str(err))
+
+    def import_json(self):
+        """Importe des équipements depuis un fichier JSON."""
+        filepath = filedialog.askopenfilename(
+            filetypes=[("Fichiers JSON", "*.json")],
+            title="Importer des équipements depuis JSON"
+        )
+        if not filepath:
+            return
+        inseres = 0
+        erreurs = 0
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                messagebox.showerror("Erreur import", "Le fichier JSON doit contenir une liste d'équipements.")
+                return
+            for item in data:
+                nom = str(item.get("nom", "")).strip()
+                num_serie = str(item.get("numSerie", "")).strip()
+                date_fin = str(item.get("dateFinGarantie", "")).strip() or None
+                etat = str(item.get("etat", "")).strip()
+                id_salle = item.get("id_salle")
+                id_type = str(item.get("id_type_equipement", "")).strip()
+                if not nom or not num_serie:
+                    erreurs += 1
+                    continue
+                try:
+                    self.db.execute(
+                        "INSERT INTO equipement (nom, numSerie, dateFinGarantie, etat, id_salle, id_type_equipement) VALUES (%s,%s,%s,%s,%s,%s)",
+                        (nom, num_serie, date_fin, etat, id_salle, id_type)
+                    )
+                    inseres += 1
+                except Exception:
+                    erreurs += 1
+            self.load_equipements()
+            messagebox.showinfo(
+                "Import terminé",
+                f"{inseres} équipement(s) importé(s).\n{erreurs} ligne(s) ignorée(s)."
+            )
+        except Exception as err:
+            messagebox.showerror("Erreur import JSON", str(err))
 
 if __name__ == "__main__":
     app = Application()
