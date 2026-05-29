@@ -26,7 +26,7 @@ class TestDatabase(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_connect.return_value = mock_conn
         
-        db = Database(host="localhost", port=3306, user="root", password="", database="gestion_de_parc")
+        db = Database(host="localhost", port=3306, user="root", password="root", database="gestion_de_parc")
         
         # Vérifier les paramètres passés
         call_args = mock_connect.call_args

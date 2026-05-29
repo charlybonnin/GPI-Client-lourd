@@ -96,6 +96,21 @@ CREATE TABLE `type_equipement` (
   `nom` varchar(50) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `intervention`
+--
+
+CREATE TABLE `intervention` (
+  `id` int(11) NOT NULL,
+  `id_equipement` int(11) NOT NULL,
+  `date_intervention` date NOT NULL,
+  `type_action` varchar(100) NOT NULL,
+  `description` text NOT NULL,
+  `technicien` varchar(100) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 --
 -- Index pour les tables déchargées
 --
@@ -137,6 +152,13 @@ ALTER TABLE `type_equipement`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Index pour la table `intervention`
+--
+ALTER TABLE `intervention`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `id_equipement` (`id_equipement`);
+
+--
 -- AUTO_INCREMENT pour les tables déchargées
 --
 
@@ -175,6 +197,19 @@ ALTER TABLE `salle`
 --
 ALTER TABLE `type_equipement`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT pour la table `intervention`
+--
+ALTER TABLE `intervention`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Contrainte de clé étrangère pour la table `intervention`
+--
+ALTER TABLE `intervention`
+  ADD CONSTRAINT `fk_intervention_equipement` FOREIGN KEY (`id_equipement`) REFERENCES `equipement` (`id`) ON DELETE CASCADE;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

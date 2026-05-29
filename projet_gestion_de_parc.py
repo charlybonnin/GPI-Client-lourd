@@ -56,6 +56,17 @@ class Database:
                 id_type_equipement VARCHAR(100)
             )
         """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS intervention (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                id_equipement INT NOT NULL,
+                date_intervention DATE NOT NULL,
+                type_action VARCHAR(100) NOT NULL,
+                description TEXT NOT NULL,
+                technicien VARCHAR(100) NOT NULL,
+                FOREIGN KEY (id_equipement) REFERENCES equipement(id) ON DELETE CASCADE
+            )
+        """)
         self.conn.commit()
 
     def is_connected(self):
@@ -159,8 +170,10 @@ class Application(tk.Tk):
                   command=self.edit_equipment).grid(row=0, column=1, padx=5)
         tk.Button(btn_frame, text="Supprimer", width=15,
                   command=self.delete_equipment).grid(row=0, column=2, padx=5)
+        tk.Button(btn_frame, text="Interventions", width=15,
+                  command=self.show_interventions).grid(row=0, column=3, padx=5)
         tk.Button(btn_frame, text="Rafraîchir", width=15,
-                  command=self.load_equipements).grid(row=0, column=3, padx=5)
+                  command=self.load_equipements).grid(row=0, column=4, padx=5)
 
     def search_equipements(self):
         """Recherche les équipements selon le critère et la valeur sélectionnés."""
@@ -452,6 +465,129 @@ class Application(tk.Tk):
             self.load_equipements()
             win.destroy()
         tk.Button(win, text="Supprimer", command=validate).grid(row=1, column=0, columnspan=2, pady=10)
+
+    def show_interventions(self):
+        """Ouvre la fenêtre de gestion des interventions pour un équipement."""
+        win = tk.Toplevel(self)
+        win.title("Historique des interventions")
+        win.geometry("800x500")
+
+        # Sélection de l'équipement
+        top_frame = tk.Frame(win)
+        top_frame.pack(pady=10)
+        tk.Label(top_frame, text="ID équipement :").grid(row=0, column=0, padx=5)
+        entry_id_eq = tk.Entry(top_frame, width=10)
+        entry_id_eq.grid(row=0, column=1, padx=5)
+
+        # Tableau des interventions
+        columns = ("id", "date_intervention", "type_action", "description", "technicien")
+        tree_int = ttk.Treeview(win, columns=columns, show="headings")
+        for col, text in [("id", "ID"), ("date_intervention", "Date"), ("type_action", "Type"),
+                          ("description", "Description"), ("technicien", "Technicien")]:
+            tree_int.heading(col, text=text)
+        tree_int.column("id", width=40)
+        tree_int.column("date_intervention", width=100)
+        tree_int.column("type_action", width=130)
+        tree_int.column("description", width=300)
+        tree_int.column("technicien", width=120)
+        tree_int.pack(fill="both", expand=True, padx=10, pady=5)
+
+        def load_interventions():
+            """Charge les interventions de l'équipement sélectionné."""
+            id_eq = entry_id_eq.get().strip()
+            if not id_eq.isdigit():
+                messagebox.showerror("Erreur", "L'ID doit être un nombre.")
+                return
+            for row in tree_int.get_children():
+                tree_int.delete(row)
+            try:
+                cursor = self.db.conn.cursor(dictionary=True)
+                cursor.execute(
+                    "SELECT * FROM intervention WHERE id_equipement = %s ORDER BY date_intervention DESC",
+                    (id_eq,)
+                )
+                for item in cursor.fetchall():
+                    tree_int.insert("", tk.END, values=(
+                        item["id"], item["date_intervention"],
+                        item["type_action"], item["description"], item["technicien"]
+                    ))
+            except Error as err:
+                messagebox.showerror("Erreur SQL", str(err))
+
+        tk.Button(top_frame, text="Charger", command=load_interventions).grid(row=0, column=2, padx=5)
+
+        # Boutons d'action
+        btn_frame = tk.Frame(win)
+        btn_frame.pack(pady=5)
+
+        def add_intervention():
+            """Ouvre un formulaire pour ajouter une intervention."""
+            id_eq = entry_id_eq.get().strip()
+            if not id_eq.isdigit():
+                messagebox.showerror("Erreur", "Veuillez charger un équipement d'abord.")
+                return
+            form = tk.Toplevel(win)
+            form.title("Ajouter une intervention")
+
+            tk.Label(form, text="Date (YYYY-MM-DD) :").grid(row=0, column=0, padx=10, pady=5)
+            entry_date = tk.Entry(form)
+            entry_date.insert(0, datetime.now().strftime("%Y-%m-%d"))
+            entry_date.grid(row=0, column=1, padx=10, pady=5)
+
+            tk.Label(form, text="Type d'action :").grid(row=1, column=0, padx=10, pady=5)
+            type_options = ["Maintenance préventive", "Réparation", "Mise à jour logicielle",
+                            "Changement de composant", "Installation", "Autre"]
+            entry_type = ttk.Combobox(form, values=type_options, state='readonly', width=25)
+            entry_type.current(0)
+            entry_type.grid(row=1, column=1, padx=10, pady=5)
+
+            tk.Label(form, text="Description :").grid(row=2, column=0, padx=10, pady=5)
+            entry_desc = tk.Text(form, width=30, height=4)
+            entry_desc.grid(row=2, column=1, padx=10, pady=5)
+
+            tk.Label(form, text="Technicien :").grid(row=3, column=0, padx=10, pady=5)
+            entry_tech = tk.Entry(form)
+            entry_tech.grid(row=3, column=1, padx=10, pady=5)
+
+            def save():
+                date = entry_date.get().strip()
+                type_action = entry_type.get().strip()
+                description = entry_desc.get("1.0", tk.END).strip()
+                technicien = entry_tech.get().strip()
+
+                if not date or not type_action or not description or not technicien:
+                    messagebox.showerror("Erreur", "Tous les champs sont obligatoires.")
+                    return
+                try:
+                    datetime.strptime(date, "%Y-%m-%d")
+                except ValueError:
+                    messagebox.showerror("Erreur", "Date invalide. Format attendu : YYYY-MM-DD.")
+                    return
+
+                self.db.execute("""
+                    INSERT INTO intervention (id_equipement, date_intervention, type_action, description, technicien)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (id_eq, date, type_action, description, technicien))
+                load_interventions()
+                form.destroy()
+
+            tk.Button(form, text="Enregistrer", command=save).grid(row=4, column=0, columnspan=2, pady=10)
+
+        def delete_intervention():
+            """Supprime l'intervention sélectionnée dans le tableau."""
+            selected = tree_int.selection()
+            if not selected:
+                messagebox.showwarning("Attention", "Sélectionnez une intervention à supprimer.")
+                return
+            id_int = tree_int.item(selected[0])["values"][0]
+            if messagebox.askyesno("Confirmation", f"Supprimer l'intervention #{id_int} ?"):
+                self.db.execute("DELETE FROM intervention WHERE id = %s", (id_int,))
+                load_interventions()
+
+        tk.Button(btn_frame, text="Ajouter une intervention", width=22,
+                  command=add_intervention).grid(row=0, column=0, padx=5)
+        tk.Button(btn_frame, text="Supprimer l'intervention", width=22,
+                  command=delete_intervention).grid(row=0, column=1, padx=5)
 
 
 if __name__ == "__main__":
