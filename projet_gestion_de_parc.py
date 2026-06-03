@@ -6,6 +6,7 @@ from mysql.connector import Error             # Classe d'erreur spécifique à M
 import os                                     # Gestion du système de fichiers
 import csv                                    # Lecture et écriture de fichiers CSV
 import json                                   # Lecture et écriture de fichiers JSON
+import webbrowser                             # Ouvre un fichier dans le navigateur par défaut
 from datetime import datetime                 # Manipulation des dates et heures
 
 
@@ -76,6 +77,15 @@ class GestionBDD:
                 FOREIGN KEY (id_equipement) REFERENCES equipement(id) ON DELETE CASCADE
             )
         """)
+        # Ajoute la colonne statut si elle n'existe pas (migration base existante)
+        try:
+            self.curseur.execute(
+                "ALTER TABLE intervention ADD COLUMN statut VARCHAR(50) NOT NULL DEFAULT 'Nouveau'"
+            )
+            self.connexion.commit()
+        except Error:
+            pass   # La colonne existe deja, on ignore l'erreur
+
         self.connexion.commit()   # Valide les modifications en base
 
     def est_connecte(self):
@@ -541,6 +551,113 @@ class Application(tk.Tk):
 
             tk.Button(formulaire, text="Enregistrer", command=enregistrer).grid(row=5, column=0, columnspan=2, pady=10)
 
+        def generer_fiche_html():
+            """Genere une fiche HTML de suivi."""
+            id_eq = champ_id_eq.get().strip()
+            if not id_eq.isdigit():
+                messagebox.showerror('Erreur', 'Veuillez charger un equipement.')
+                return
+            try:
+                curseur_local = self.bdd.connexion.cursor(dictionary=True)
+
+                # Recupere en une seule requete les donnees de
+                # l'equipement ET de ses interventions via la cle id_equipement
+                requete_join = (
+                    'SELECT '
+                    'e.id AS eq_id, e.nom AS eq_nom, e.numSerie AS eq_serie, '
+                    'e.dateFinGarantie AS eq_garantie, e.etat AS eq_etat, '
+                    'e.id_salle AS eq_salle, e.id_type_equipement AS eq_type, '
+                    'i.date_intervention, i.type_action, i.description, '
+                    'i.technicien, i.statut '
+                    'FROM equipement e '
+                    'LEFT JOIN intervention i ON i.id_equipement = e.id '
+                    'WHERE e.id = %s '
+                    'ORDER BY i.date_intervention DESC'
+                )
+                # LEFT JOIN : conserve l'equipement meme sans intervention
+                curseur_local.execute(requete_join, (id_eq,))
+                resultats = curseur_local.fetchall()
+
+                if not resultats:
+                    messagebox.showerror('Erreur', 'Equipement introuvable.')
+                    return
+
+                # Toutes les lignes ont les memes infos equipement
+                prem = resultats[0]
+
+                def fmt_date(val):
+                    if val is None: return '—'
+                    if hasattr(val, 'strftime'): return val.strftime('%d/%m/%Y')
+                    return str(val)
+
+                eq_nom      = str(prem.get('eq_nom', '—'))
+                eq_serie    = str(prem.get('eq_serie', '—'))
+                eq_type     = str(prem.get('eq_type', '—'))
+                eq_etat     = str(prem.get('eq_etat', '—'))
+                eq_salle    = str(prem.get('eq_salle', '—'))
+                eq_garantie = fmt_date(prem.get('eq_garantie'))
+
+                # Construction des lignes du tableau HTML
+                lignes_tab = ''
+                if prem.get('date_intervention') is not None:
+                    for r in resultats:
+                        lignes_tab += '<tr>'
+                        lignes_tab += '<td>' + fmt_date(r.get('date_intervention')) + '</td>'
+                        lignes_tab += '<td>' + str(r.get('type_action', '')) + '</td>'
+                        lignes_tab += '<td>' + str(r.get('description', '')) + '</td>'
+                        lignes_tab += '<td>' + str(r.get('technicien', '')) + '</td>'
+                        lignes_tab += '<td>' + str(r.get('statut', '')) + '</td>'
+                        lignes_tab += '</tr>'
+                else:
+                    lignes_tab = "<tr><td colspan='5'>Aucune intervention.</td></tr>"
+
+                date_gen = datetime.now().strftime('%d/%m/%Y a %H:%M')
+
+                # Construction du HTML brut sans CSS
+                html  = '<html><head><meta charset="UTF-8">'
+                html += '<title>Fiche - ' + eq_nom + '</title>'
+                html += '</head><body>'
+                html += '<h2>Fiche de suivi - ' + eq_nom + '</h2>'
+                html += '<hr>'
+                html += '<h3>Informations equipement</h3>'
+                html += '<table border="1">'
+                html += '<tr><td><b>Nom</b></td><td>' + eq_nom + '</td></tr>'
+                html += '<tr><td><b>Numero de serie</b></td><td>' + eq_serie + '</td></tr>'
+                html += '<tr><td><b>Type</b></td><td>' + eq_type + '</td></tr>'
+                html += '<tr><td><b>Etat</b></td><td>' + eq_etat + '</td></tr>'
+                html += '<tr><td><b>Salle</b></td><td>' + eq_salle + '</td></tr>'
+                html += '<tr><td><b>Fin de garantie</b></td><td>' + eq_garantie + '</td></tr>'
+                html += '</table>'
+                html += '<h3>Historique des interventions</h3>'
+                html += '<table border="1">'
+                html += '<tr><th>Date</th><th>Type</th><th>Description</th><th>Technicien</th><th>Statut</th></tr>'
+                html += lignes_tab
+                html += '</table>'
+                html += '</body></html>'
+
+                # Boite de dialogue pour choisir l'emplacement
+                nom_fich = 'fiche_' + eq_nom.replace(' ', '_') + '.html'
+                chemin = filedialog.asksaveasfilename(
+                    defaultextension='.html',
+                    filetypes=[('Fichier HTML', '*.html')],
+                    initialfile=nom_fich,
+                    title='Enregistrer la fiche'
+                )
+                if not chemin:
+                    return
+
+                # Ecriture du fichier HTML
+                with open(chemin, 'w', encoding='utf-8') as fich:
+                    fich.write(html)
+
+                # Ouverture dans le navigateur
+                chemin_url = 'file:///' + chemin.replace(chr(92), '/')
+                webbrowser.open(chemin_url)
+                messagebox.showinfo('Fiche generee', 'Fiche ouverte dans le navigateur.')
+
+            except Exception as erreur:
+                messagebox.showerror('Erreur', str(erreur))
+
         def supprimer_intervention():
             """Supprime l'intervention sélectionnée dans le tableau."""
             selection = tableau_int.selection()   # Récupère la ligne sélectionnée
@@ -555,6 +672,8 @@ class Application(tk.Tk):
                   command=ajouter_intervention).grid(row=0, column=0, padx=5)
         tk.Button(cadre_boutons, text="Supprimer l'intervention", width=22,
                   command=supprimer_intervention).grid(row=0, column=1, padx=5)
+        tk.Button(cadre_boutons, text="Générer fiche HTML", width=22,
+                  command=generer_fiche_html).grid(row=0, column=2, padx=5)
 
     def exporter_csv(self):
         """Exporte tous les équipements dans un fichier CSV choisi par l'utilisateur."""
